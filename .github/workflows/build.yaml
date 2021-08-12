@@ -23,11 +23,31 @@ jobs:
       - name: Set tag names
         id: tag_names
         run: |
-          echo "GITHUB_EVENT_NAME                         =" "${GITHUB_EVENT_NAME}"
-          echo "git branch --show-current | sed 's|/|-|g' =" $(git branch --show-current | sed 's|/|-|g')
-          echo "git rev-parse --short HEAD                =" $(git rev-parse --short HEAD)
-          echo "git describe --tags --always              =" $(git describe --tags --always)
-          echo "GITHUB_REF#refs/heads/                    =" "${GITHUB_REF#refs/heads/}"
-          echo "GITHUB_HEAD_REF#refs/heads/               =" "${GITHUB_HEAD_REF#refs/heads/}"
-          echo "GITHUB_BASE_REF#refs/heads/               =" "${GITHUB_BASE_REF#refs/heads/}"
+          branch_name_source='unknown'
+          if [[ $GITHUB_EVENT_NAME == 'pull_request' ]]; then
+            # PRのときは、マージ結果のコミットハッシュに対して動作するため
+            # PRもとのブランチ名にプレフィックス 'merge-' をつけたものを擬似的にブランチ名とする
+            branch_name_source="merge-${GITHUB_HEAD_REF#refs/heads/}"
+          elif [[ $GITHUB_EVENT_NAME == 'push' ]]; then
+            if [[ "${GITHUB_REF}" =~ "refs/tags/" ]]; then
+              # refs/tagsで始まるのはタグのプッシュ
+              # タグ名にプレフィックス 'tag-' をつけたものを擬似的にブランチ名とする
+              branch_name_source="tag-${GITHUB_REF#refs/tags/}"
+            else
+              # refs/headsで始まるのはブランチのプッシュ
+              branch_name_source="${GITHUB_REF#refs/heads/}"
+            fi
+          elif [[ $GITHUB_EVENT_NAME == 'workflow_dispatch' ]]; then
+            branch_name_source="${GITHUB_REF#refs/heads/}"
+          fi
 
+          # スラッシュはdockerのタグ名に使えないのでハイフンに置き換える
+          # https://github.com/distribution/distribution/blob/38ab4c606ee367e5558fe89b5c4475ed4e1f5b8c/reference/reference.go#L15
+          branch_name=$(echo ${branch_name_source} | sed 's|/|-|g')
+
+          echo "GITHUB_EVENT_NAME             =" "${GITHUB_EVENT_NAME}"
+          echo "GITHUB_REF#refs/heads/        =" "${GITHUB_REF#refs/heads/}"
+          echo "GITHUB_REF#refs/tags/         =" "${GITHUB_REF#refs/tags/}"
+          echo "GITHUB_HEAD_REF#refs/heads/   =" "${GITHUB_HEAD_REF#refs/heads/}"
+          echo "GITHUB_BASE_REF#refs/heads/   =" "${GITHUB_BASE_REF#refs/heads/}"
+          echo "branch_name                   =" "${branch_name}"
